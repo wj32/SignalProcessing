@@ -47,7 +47,7 @@ module SampleBuffer =
           0
     let mutable j = (fromOffset + invalidStartSize) % t.size
     for i = 0 to validSize - 1 do
-      t.accessor.set (validFirstPosition + i) t.data.[j]
+      t.accessor.set (validFirstPosition + i) !!t.data.[j]
       j <- if j = t.size - 1 then 0 else j + 1
 
   let create accessor accessType size =

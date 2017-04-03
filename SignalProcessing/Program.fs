@@ -14,11 +14,11 @@ module Main =
       W.setI output i sample'
 
   let testModAmp (input : W.T) (parameters : P.T) (output : W.T) =
-    let modHz = 1.
+    let modHz = 1.f
     for i = 0 to parameters.samples - 1 do
       let sample = W.get input i
-      let u = float i / float parameters.sampleRate
-      let c = 0.5 * (1. + sin (2. * Math.PI * modHz * u))
+      let u = float32 i / float32 parameters.sampleRate
+      let c = 0.5f * (1.f + sin (2.f * float32 Math.PI * modHz * u))
       let sample' = c * sample
       W.set output i sample'
 
@@ -41,17 +41,17 @@ module Main =
       if k = 0 then
         sample1 <- sample2
         sample2 <- W.get input (i / factor)
-      let c = float k / float factor
-      let sample = (1. - c) * sample1 + c * sample2
+      let c = float32 k / float32 factor
+      let sample = (1.f - c) * sample1 + c * sample2
       W.set output j sample
       j <- j + 1
 
   let testAddNoise (input : W.T) (parameters : P.T) (output : W.T) =
-    let noiseSinHz = 440.
-    let noiseSinAmp = 0.5
-    let noiseGaussianScale = 0.2
-    let noiseGaussianAmp = 0.2
-    let signalAmp = 1. - noiseSinAmp - noiseGaussianAmp
+    let noiseSinHz = 440.f
+    let noiseSinAmp = 0.5f
+    let noiseGaussianScale = 0.2f
+    let noiseGaussianAmp = 0.2f
+    let signalAmp = 1.f - noiseSinAmp - noiseGaussianAmp
     let random = new Random()
     let boxMuller () =
       let r = sqrt (-2. * log (random.NextDouble()))
@@ -59,8 +59,8 @@ module Main =
       (r * cos t, r * sin t)
     for i = 0 to parameters.samples - 1 do
       let sample = W.get input i
-      let u = float i / float parameters.sampleRate
-      let noiseSin = sin (2. * Math.PI * noiseSinHz * u)
+      let u = float32 i / float32 parameters.sampleRate
+      let noiseSin = sin (2.f * float32 Math.PI * noiseSinHz * u)
       let noiseGaussian1, noiseGaussian2 = boxMuller ()
       let sample' =
         signalAmp * sample
@@ -86,13 +86,50 @@ module Main =
       SampleBuffer.moveBy inputBuffer hopSize
     SampleBuffer.flush outputBuffer
 
+  let testAnalyzeFrames (input : W.T) (parameters : P.T) (output : W.T) =
+    let frameSize = 8001
+    let hopSize = 2000
+    let fftSize = 16384
+    let binSize = float32 parameters.sampleRate / float32 fftSize
+    let frames = (parameters.samples + hopSize - 1) / hopSize
+    let factor = 2
+    let fft = FFT.create fftSize FFT.Normalization.Symmetric
+    let inputBuffer = SampleBuffer.create (W.accessor input) AccessType.ReadOnly 50000
+    let outputBuffer = SampleBuffer.create (W.accessor output) AccessType.WriteOnly 50000
+    let frame = Array.zeroCreate frameSize
+    let fftInput = Array.zeroCreate fftSize
+    let fftOutput = Array.zeroCreate fftSize
+    let wf = WindowFunction.blackman frameSize
+    let c = WindowFunction.normalizationFactor wf hopSize
+    for i = 0 to frames - 1 do
+      SampleBuffer.window inputBuffer wf frame
+      for channel = 1 to 2 do
+        FFT.sampleArrayToCentered channel frame fftInput
+        FFT.compute fft fftInput fftOutput
+
+        let passCutoffHz = 440.f
+        let passCutoffBin = int (passCutoffHz / binSize)
+
+        // Low pass
+        Array.fill fftOutput passCutoffBin (fftOutput.Length - passCutoffBin * 2) Complex.zero
+        // High pass
+        //Array.fill fftOutput 0 passCutoffBin Complex.zero
+        //Array.fill fftOutput (fftOutput.Length - passCutoffBin) passCutoffBin Complex.zero
+
+        FFT.computeInverse fft fftOutput fftInput
+        FFT.sampleArrayFromCentered channel frame fftInput
+      SampleBuffer.add outputBuffer c frame
+      SampleBuffer.moveBy outputBuffer hopSize
+      SampleBuffer.moveBy inputBuffer hopSize
+    SampleBuffer.flush outputBuffer
+
   [<EntryPoint>]
   let main argv =
       use input = W.openFile AccessType.ReadOnly "D:\\Box\\rag_doll.wav"
       let parameters = W.parameters input
       let output = W.createFile "D:\\Box\\test.wav" parameters
 
-      testSkipFrames input parameters output
+      testAnalyzeFrames input parameters output
 
       (output :> IDisposable).Dispose()
 

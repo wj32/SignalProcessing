@@ -55,8 +55,11 @@
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
     <Compile Include="AccessType.fs" />
+    <Compile Include="Complex.fs" />
     <Compile Include="Sample.fs" />
     <Compile Include="SampleAccessor.fs" />
+    <Compile Include="FFT.fsi" />
+    <Compile Include="FFT.fs" />
     <Compile Include="WindowFunction.fs" />
     <Compile Include="SampleBuffer.fsi" />
     <Compile Include="SampleBuffer.fs" />
