@@ -3,9 +3,6 @@
 open System
 
 module WaveFile =
-  module Access =
-    type T = ReadOnly | ReadWrite
-
   module Parameters =
     type T =
       { channels : int; (* sample/msample *)
@@ -19,12 +16,12 @@ module WaveFile =
   type T =
     interface IDisposable
 
-  val openFile : access : Access.T -> fileName : string -> T
-  val createFile : fileName : string -> parameters : Parameters.T -> T
-
   val parameters : T -> Parameters.T
-
+  val accessor : T -> SampleAccessor.T
   val get : T -> index : int -> Sample.T
   val set : T -> index : int -> sample : Sample.T -> unit
-  val getF : T -> index : int -> SampleF.T
-  val setF : T -> index : int -> sample : SampleF.T -> unit
+  val getI : T -> index : int -> SampleI.T
+  val setI : T -> index : int -> sample : SampleI.T -> unit
+
+  val openFile : accessType : AccessType.T -> fileName : string -> T
+  val createFile : fileName : string -> parameters : Parameters.T -> T

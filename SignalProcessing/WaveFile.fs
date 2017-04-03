@@ -5,8 +5,7 @@ open System.IO
 open System.IO.MemoryMappedFiles
 
 module WaveFile =
-  module Access =
-    type T = ReadOnly | ReadWrite
+  module SA = SampleAccessor
 
   module Parameters =
     type T =
@@ -16,44 +15,6 @@ module WaveFile =
         samples : int; (* msample *) }
 
   exception InvalidFormatException of message : string
-
-  module SampleAccessors =
-    type Get = int -> Sample.T
-    type Set = int -> Sample.T -> unit
-    type GetF = int -> SampleF.T
-    type SetF = int -> SampleF.T -> unit
-
-    type T =
-      { get : Get;
-        set : Set;
-        getF : GetF;
-        setF : SetF; }
-
-    let create (view : MemoryMappedViewAccessor) b channels bitDepth =
-      match channels, bitDepth with
-      | 1, 16 ->
-        { get = (fun i -> {x1 = view.ReadInt16(b + int64 (i * 2)); x2 = 0s});
-          set = (fun i s -> view.Write(b + int64 (i * 2), int16 s.x1));
-          getF = (fun i -> {x1 = (float32 (view.ReadInt16(b + int64 (i * 2)))) / 32768.f; x2 = 0.f});
-          setF = (fun i s -> view.Write(b + int64 (i * 2), int16 (s.x1 * 32768.f))); }
-      | 2, 16 ->
-        { get =
-            (fun i ->
-              let v = view.ReadInt32(b + int64 (i * 4))
-              {x1 = int16 (v &&& 0xffff); x2 = int16 (v >>> 16)}
-            );
-          set = (fun i s -> view.Write(b + int64 (i * 4), int32 (int s.x1 + (int s.x2 <<< 16))));
-          getF =
-            (fun i ->
-              let v = view.ReadInt32(b + int64 (i * 4))
-              {x1 = float32 (int16 (v &&& 0xffff)) / 32768.f; x2 = float32 (int16 (v >>> 16)) / 32768.f}
-            );
-          setF =
-            (fun i s ->
-              let v = (int (s.x1 * 32768.f) &&& 0xffff) + (int (s.x2 * 32768.f) <<< 16)
-              view.Write(b + int64 (i * 4), int32 v)
-            ); }
-      | _ -> raise (InvalidFormatException "Unsupported channel and bit depth combination")
 
   type T =
     { file : MemoryMappedFile;
@@ -65,10 +26,7 @@ module WaveFile =
       samples : int; (* msample *)
       bytesPerSample: int; (* byte/msample *)
       byteRate : int; (* byte/second *)
-      get : SampleAccessors.Get;
-      set : SampleAccessors.Set;
-      getF : SampleAccessors.GetF;
-      setF : SampleAccessors.SetF; }
+      accessor : SampleAccessor.T; }
 
     interface IDisposable with
       member t.Dispose() =
@@ -87,11 +45,56 @@ module WaveFile =
     module FormatId =
       let [<Literal>] Wave = 0x45564157
 
-  let openFile access fileName =
+  let parameters t =
+    { Parameters.channels = t.channels;
+      Parameters.bitDepth = t.bitDepth;
+      Parameters.sampleRate = t.sampleRate;
+      Parameters.samples = t.samples; }
+
+  let accessor t = t.accessor
+
+  let get t i = t.accessor.get i
+
+  let set t i s = t.accessor.set i s
+
+  let getI t i = t.accessor.getI i
+
+  let setI t i s = t.accessor.setI i s
+
+  let createAccessor (view : MemoryMappedViewAccessor) b channels bitDepth samples =
+    match channels, bitDepth with
+    | 1, 16 ->
+      { SA.size = samples;
+        SA.get = (fun i -> {x1 = (float32 (view.ReadInt16(b + int64 (i * 2)))) / 32768.f; x2 = 0.f});
+        SA.set = (fun i s -> view.Write(b + int64 (i * 2), int16 (round (s.x1 * 32768.f))));
+        SA.getI = (fun i -> {x1 = view.ReadInt16(b + int64 (i * 2)); x2 = 0s});
+        SA.setI = (fun i s -> view.Write(b + int64 (i * 2), int16 s.x1)); }
+    | 2, 16 ->
+      { SA.size = samples;
+        SA.get =
+          (fun i ->
+            let v = view.ReadInt32(b + int64 (i * 4))
+            {x1 = float32 (int16 (v &&& 0xffff)) / 32768.f; x2 = float32 (int16 (v >>> 16)) / 32768.f}
+          );
+        SA.set =
+          (fun i s ->
+            let v = (int (round (s.x1 * 32768.f)) &&& 0xffff) + (int (round (s.x2 * 32768.f)) <<< 16)
+            view.Write(b + int64 (i * 4), int32 v)
+          );
+        SA.getI =
+          (fun i ->
+            let v = view.ReadInt32(b + int64 (i * 4))
+            {x1 = int16 (v &&& 0xffff); x2 = int16 (v >>> 16)}
+          );
+        SA.setI = (fun i s -> view.Write(b + int64 (i * 4), int32 (int s.x1 + (int s.x2 <<< 16)))); }
+    | _ -> raise (InvalidFormatException "Unsupported channel and bit depth combination")
+
+  let openFile accessType fileName =
     let memoryMappedFileAccess =
-      match access with
-      | Access.ReadOnly -> MemoryMappedFileAccess.Read
-      | Access.ReadWrite -> MemoryMappedFileAccess.ReadWrite
+      match accessType with
+      | AccessType.ReadOnly -> MemoryMappedFileAccess.Read
+      | AccessType.ReadWrite -> MemoryMappedFileAccess.ReadWrite
+      | AccessType.WriteOnly -> invalidArg "accessType" "WriteOnly is not valid for opening a file"
     let file =
       MemoryMappedFile.CreateFromFile(fileName, FileMode.Open, null, 0L, memoryMappedFileAccess)
     let view = file.CreateViewAccessor(0L, 0L, memoryMappedFileAccess)
@@ -134,20 +137,17 @@ module WaveFile =
         (baseOffset + 8L, dataSize)
     let dataOffset, dataSize = findDataChunk 36L
 
-    let accessors = SampleAccessors.create view dataOffset channels bitDepth
+    let samples = dataSize / bytesPerSample
     { file = file;
       view = view;
       dataOffset = dataOffset;
       channels = channels;
       bitDepth = bitDepth;
       sampleRate = sampleRate;
-      samples = dataSize / bytesPerSample;
+      samples = samples;
       bytesPerSample = bytesPerSample;
       byteRate = bytesPerSample * sampleRate;
-      get = accessors.get;
-      set = accessors.set;
-      getF = accessors.getF;
-      setF = accessors.setF; }
+      accessor = createAccessor view dataOffset channels bitDepth samples; }
 
   let createFile fileName (parameters : Parameters.T) =
     let bytesPerSample = (parameters.channels * parameters.bitDepth + 7) / 8 // Round up
@@ -185,7 +185,6 @@ module WaveFile =
     view.Write(40L, int32 dataSize)
     let dataOffset = 44L
 
-    let accessors = SampleAccessors.create view dataOffset parameters.channels parameters.bitDepth
     { file = file;
       view = view;
       dataOffset = dataOffset;
@@ -195,21 +194,5 @@ module WaveFile =
       samples = parameters.samples;
       bytesPerSample = bytesPerSample;
       byteRate = byteRate;
-      get = accessors.get;
-      set = accessors.set;
-      getF = accessors.getF;
-      setF = accessors.setF; }
-
-  let parameters t =
-    { Parameters.channels = t.channels;
-      Parameters.bitDepth = t.bitDepth;
-      Parameters.sampleRate = t.sampleRate;
-      Parameters.samples = t.samples; }
-
-  let get t i = t.get i
-
-  let set t i s = t.set i s
-
-  let getF t i = t.getF i
-
-  let setF t i s = t.setF i s
+      accessor =
+        createAccessor view dataOffset parameters.channels parameters.bitDepth parameters.samples; }

@@ -54,7 +54,12 @@
   </Choose>
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
+    <Compile Include="AccessType.fs" />
     <Compile Include="Sample.fs" />
+    <Compile Include="SampleAccessor.fs" />
+    <Compile Include="WindowFunction.fs" />
+    <Compile Include="SampleBuffer.fsi" />
+    <Compile Include="SampleBuffer.fs" />
     <Compile Include="WaveFile.fsi" />
     <Compile Include="WaveFile.fs" />
     <Compile Include="Program.fs" />
