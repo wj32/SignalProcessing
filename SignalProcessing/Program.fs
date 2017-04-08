@@ -69,14 +69,14 @@ module Main =
       W.set output i sample'
 
   let testSkipFrames (input : W.T) (parameters : P.T) (output : W.T) =
-    let frameSize = 8001
+    let frameSize = 12001
     let hopSize = 2000
     let frames = (parameters.samples + hopSize - 1) / hopSize
     let factor = 2
     let inputBuffer = SampleBuffer.create (W.accessor input) AccessType.ReadOnly 50000
     let outputBuffer = SampleBuffer.create (W.accessor output) AccessType.WriteOnly 50000
     let frame = Array.zeroCreate frameSize
-    let wf = WindowFunction.hamming frameSize
+    let wf = WindowFunction.blackman frameSize
     let c = WindowFunction.normalizationFactor wf hopSize
     for i = 0 to frames - 1 do
       if i % factor = 0 then
@@ -89,10 +89,9 @@ module Main =
   let testAnalyzeFrames (input : W.T) (parameters : P.T) (output : W.T) =
     let frameSize = 8001
     let hopSize = 2000
-    let fftSize = 16384
+    let fftSize = 16384 * 2
     let binSize = float32 parameters.sampleRate / float32 fftSize
     let frames = (parameters.samples + hopSize - 1) / hopSize
-    let factor = 2
     let fft = FFT.create fftSize FFT.Normalization.Symmetric
     let inputBuffer = SampleBuffer.create (W.accessor input) AccessType.ReadOnly 50000
     let outputBuffer = SampleBuffer.create (W.accessor output) AccessType.WriteOnly 50000
@@ -100,21 +99,44 @@ module Main =
     let fftInput = Array.zeroCreate fftSize
     let fftOutput = Array.zeroCreate fftSize
     let wf = WindowFunction.blackman frameSize
-    let c = WindowFunction.normalizationFactor wf hopSize
+    let c = 0.5f * WindowFunction.normalizationFactor wf hopSize
+
+    let passCutoffHz = 440.f
+    let passCutoffBin = passCutoffHz / binSize
+    let rampWidthHz = 40.f
+    let rampWidthBins = rampWidthHz / binSize
+    let rampLeftBin = passCutoffBin - rampWidthBins / 2.f
+    let rampRightBin = passCutoffBin + rampWidthBins / 2.f
+
+    let lowPass i =
+      let i = float32 i
+      if i < rampLeftBin then
+        1.f
+      else if i > rampRightBin then
+        0.f
+      else
+        (rampRightBin - i) / rampWidthBins
+
+    let highPass i = 1.f - lowPass i
+
+    let filterToApply =
+      let f = lowPass
+      let a = Array.zeroCreate fftSize
+      // Enforce symmetry
+      for i = 0 to fftSize / 2 do
+        a.[i] <- f i
+      for i = fftSize / 2 + 1 to fftSize - 1 do
+        a.[i] <- a.[fftSize - i]
+      a
+
     for i = 0 to frames - 1 do
       SampleBuffer.window inputBuffer wf frame
       for channel = 1 to 2 do
         FFT.sampleArrayToCentered channel frame fftInput
         FFT.compute fft fftInput fftOutput
 
-        let passCutoffHz = 440.f
-        let passCutoffBin = int (passCutoffHz / binSize)
-
-        // Low pass
-        Array.fill fftOutput passCutoffBin (fftOutput.Length - passCutoffBin * 2) Complex.zero
-        // High pass
-        //Array.fill fftOutput 0 passCutoffBin Complex.zero
-        //Array.fill fftOutput (fftOutput.Length - passCutoffBin) passCutoffBin Complex.zero
+        for j = 0 to fftSize - 1 do
+          fftOutput.[j] <- Complex.mul' fftOutput.[j] filterToApply.[j]
 
         FFT.computeInverse fft fftOutput fftInput
         FFT.sampleArrayFromCentered channel frame fftInput

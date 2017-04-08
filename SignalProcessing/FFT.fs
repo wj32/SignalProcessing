@@ -67,9 +67,17 @@ module FFT =
 
   let compute t input output = computeInternal t t.normalizationFactor input output
 
+  let reverse (a : _ array) =
+    let mutable j = a.Length - 1
+    for i = 0 to a.Length / 2 - 1 do
+      let temp = a.[i]
+      a.[i] <- a.[j]
+      a.[j] <- temp
+      j <- j - 1
+
   let computeInverse t input output =
     computeInternal t t.normalizationInverseFactor input output
-    Array.Reverse(output)
+    reverse output
 
   let realArrayToCentered (a : float32 array) (c : Complex.T array) =
     let startSize = a.Length / 2

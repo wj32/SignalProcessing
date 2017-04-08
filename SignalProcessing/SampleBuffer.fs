@@ -9,6 +9,8 @@ module SampleBuffer =
       data : Sample.T array;
       mutable offset : int; }
 
+  let inline next t j = if j = t.size - 1 then 0 else j + 1
+
   let read t toOffset fromPosition sizeToRead =
     assert (toOffset >= 0)
     let invalidStartSize = if fromPosition < 0 then min sizeToRead (-fromPosition) else 0
@@ -25,13 +27,13 @@ module SampleBuffer =
     let mutable j = toOffset % t.size
     for i = 0 to invalidStartSize - 1 do
       t.data.[j] <- Sample.zero
-      j <- if j = t.size - 1 then 0 else j + 1
+      j <- next t j
     for i = 0 to validSize - 1 do
       t.data.[j] <- t.accessor.get (validFirstPosition + i)
-      j <- if j = t.size - 1 then 0 else j + 1
+      j <- next t j
     for i = 0 to invalidEndSize - 1 do
       t.data.[j] <- Sample.zero
-      j <- if j = t.size - 1 then 0 else j + 1
+      j <- next t j
 
   let write t fromOffset toPosition sizeToWrite =
     assert (fromOffset >= 0)
@@ -48,7 +50,7 @@ module SampleBuffer =
     let mutable j = (fromOffset + invalidStartSize) % t.size
     for i = 0 to validSize - 1 do
       t.accessor.set (validFirstPosition + i) !!t.data.[j]
-      j <- if j = t.size - 1 then 0 else j + 1
+      j <- next t j
 
   let create accessor accessType size =
     let t =
@@ -110,37 +112,33 @@ module SampleBuffer =
   let window t (windowFunction : WindowFunction.T) (toArray : Sample.T array) =
     let width = windowFunction.width
     if width > t.size then failwith "The window width is too large."
-    let mutable i = 0
     let mutable j = t.offset
     for i = 0 to width - 1 do
-      toArray.[i] <- Sample.mul t.data.[j] (windowFunction.f i)
-      j <- if j = t.size - 1 then 0 else j + 1
+      toArray.[i] <- Sample.mul t.data.[j] (windowFunction.f.[i])
+      j <- next t j
 
   let add t factor (fromArray : Sample.T array) =
-    let mutable i = 0
     let mutable j = t.offset
     for i = 0 to fromArray.Length - 1 do
       t.data.[j] <- Sample.addMul t.data.[j] fromArray.[i] factor
-      j <- if j = t.size - 1 then 0 else j + 1
+      j <- next t j
 
   let copyTo t dst size =
     let mutable i = dst.offset
     let mutable j = t.offset
     for k = 0 to size - 1 do
       dst.data.[i] <- t.data.[j]
-      i <- if i = dst.size - 1 then 0 else i + 1
-      j <- if j = t.size - 1 then 0 else j + 1
+      i <- next dst i
+      j <- next t j
 
   let copyToArray t (dst : Sample.T array) =
-    let mutable i = 0
     let mutable j = t.offset
     for i = 0 to dst.Length - 1 do
       dst.[i] <- t.data.[j]
-      j <- if j = t.size - 1 then 0 else j + 1
+      j <- next t j
 
   let copyFromArray t (src : Sample.T array) =
-    let mutable i = 0
     let mutable j = t.offset
     for i = 0 to src.Length - 1 do
       t.data.[j] <- src.[i]
-      j <- if j = t.size - 1 then 0 else j + 1
+      j <- next t j
