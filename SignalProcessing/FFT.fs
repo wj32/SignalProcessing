@@ -33,7 +33,7 @@ module FFT =
     let factors = Array.zeroCreate (exponent + 1)
     for k = 1 to exponent do
       let m = 1 <<< k
-      let root = Complex.fromPolar 1.f (-2.f * float32 Math.PI / float32 m)
+      let root = Complex.ofPolar 1.f (-2.f * float32 Math.PI / float32 m)
       let cs = Array.zeroCreate (m / 2)
       cs.[0] <- Complex.one
       for j = 1 to m / 2 - 1 do
@@ -98,16 +98,16 @@ module FFT =
   let sampleArrayToCentered channel (a : Sample.T array) (c : Complex.T array) =
     let startSize = a.Length / 2
     match channel with
+    | 0 ->
+      for i = 0 to startSize - 1 do
+        c.[c.Length - startSize + i] <- Complex.createRe a.[i].x0
+      for i = 0 to a.Length - startSize - 1 do
+        c.[i] <- Complex.createRe a.[startSize + i].x0
     | 1 ->
       for i = 0 to startSize - 1 do
         c.[c.Length - startSize + i] <- Complex.createRe a.[i].x1
       for i = 0 to a.Length - startSize - 1 do
         c.[i] <- Complex.createRe a.[startSize + i].x1
-    | 2 ->
-      for i = 0 to startSize - 1 do
-        c.[c.Length - startSize + i] <- Complex.createRe a.[i].x2
-      for i = 0 to a.Length - startSize - 1 do
-        c.[i] <- Complex.createRe a.[startSize + i].x2
     | _ -> failwith "Invalid channel number"
     for i = a.Length - startSize to c.Length - startSize - 1 do
       c.[i] <- Complex.zero
@@ -115,14 +115,14 @@ module FFT =
   let sampleArrayFromCentered channel (a : Sample.T array) (c : Complex.T array) =
     let startSize = a.Length / 2
     match channel with
+    | 0 ->
+      for i = 0 to startSize - 1 do
+        a.[i] <- {Sample.x0 = Complex.re c.[c.Length - startSize + i]; Sample.x1 = a.[i].x1}
+      for i = 0 to a.Length - startSize - 1 do
+        a.[startSize + i] <- {Sample.x0 = Complex.re c.[i]; Sample.x1 = a.[startSize + i].x1}
     | 1 ->
       for i = 0 to startSize - 1 do
-        a.[i] <- {Sample.x1 = Complex.re c.[c.Length - startSize + i]; Sample.x2 = a.[i].x2}
+        a.[i] <- {Sample.x0 = a.[i].x0; Sample.x1 = Complex.re c.[c.Length - startSize + i]}
       for i = 0 to a.Length - startSize - 1 do
-        a.[startSize + i] <- {Sample.x1 = Complex.re c.[i]; Sample.x2 = a.[startSize + i].x2}
-    | 2 ->
-      for i = 0 to startSize - 1 do
-        a.[i] <- {Sample.x1 = a.[i].x1; Sample.x2 = Complex.re c.[c.Length - startSize + i]}
-      for i = 0 to a.Length - startSize - 1 do
-        a.[startSize + i] <- {Sample.x1 = a.[startSize + i].x1; Sample.x2 = Complex.re c.[i]}
+        a.[startSize + i] <- {Sample.x0 = a.[startSize + i].x0; Sample.x1 = Complex.re c.[i]}
     | _ -> failwith "Invalid channel number"

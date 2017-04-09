@@ -9,7 +9,7 @@ module Main =
   let testDiff (input : W.T) (parameters : P.T) (output : W.T) =
     for i = 0 to parameters.samples - 1 do
       let sample = W.getI input i
-      let diff = sample.x1 / 2s - sample.x2 / 2s
+      let diff = sample.x0 / 2s - sample.x1 / 2s
       let sample' = SampleI.create diff diff
       W.setI output i sample'
 

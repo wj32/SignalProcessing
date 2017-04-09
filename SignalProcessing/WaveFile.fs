@@ -65,28 +65,28 @@ module WaveFile =
     match channels, bitDepth with
     | 1, 16 ->
       { SA.size = samples;
-        SA.get = (fun i -> {x1 = (float32 (view.ReadInt16(b + int64 (i * 2)))) / 32768.f; x2 = 0.f});
-        SA.set = (fun i s -> view.Write(b + int64 (i * 2), int16 (round (s.x1 * 32768.f))));
-        SA.getI = (fun i -> {x1 = view.ReadInt16(b + int64 (i * 2)); x2 = 0s});
-        SA.setI = (fun i s -> view.Write(b + int64 (i * 2), int16 s.x1)); }
+        SA.get = (fun i -> {x0 = (float32 (view.ReadInt16(b + int64 (i * 2)))) / 32768.f; x1 = 0.f});
+        SA.set = (fun i s -> view.Write(b + int64 (i * 2), int16 (round (s.x0 * 32768.f))));
+        SA.getI = (fun i -> {x0 = view.ReadInt16(b + int64 (i * 2)); x1 = 0s});
+        SA.setI = (fun i s -> view.Write(b + int64 (i * 2), int16 s.x0)); }
     | 2, 16 ->
       { SA.size = samples;
         SA.get =
           (fun i ->
             let v = view.ReadInt32(b + int64 (i * 4))
-            {x1 = float32 (int16 (v &&& 0xffff)) / 32768.f; x2 = float32 (int16 (v >>> 16)) / 32768.f}
+            {x0 = float32 (int16 (v &&& 0xffff)) / 32768.f; x1 = float32 (int16 (v >>> 16)) / 32768.f}
           );
         SA.set =
           (fun i s ->
-            let v = (int (round (s.x1 * 32768.f)) &&& 0xffff) + (int (round (s.x2 * 32768.f)) <<< 16)
+            let v = (int (round (s.x0 * 32768.f)) &&& 0xffff) + (int (round (s.x1 * 32768.f)) <<< 16)
             view.Write(b + int64 (i * 4), int32 v)
           );
         SA.getI =
           (fun i ->
             let v = view.ReadInt32(b + int64 (i * 4))
-            {x1 = int16 (v &&& 0xffff); x2 = int16 (v >>> 16)}
+            {x0 = int16 (v &&& 0xffff); x1 = int16 (v >>> 16)}
           );
-        SA.setI = (fun i s -> view.Write(b + int64 (i * 4), int32 (int s.x1 + (int s.x2 <<< 16)))); }
+        SA.setI = (fun i s -> view.Write(b + int64 (i * 4), int32 (int s.x0 + (int s.x1 <<< 16)))); }
     | _ -> raise (InvalidFormatException "Unsupported channel and bit depth combination")
 
   let openFile accessType fileName =

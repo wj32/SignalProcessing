@@ -123,6 +123,21 @@ module SampleBuffer =
       t.data.[j] <- Sample.addMul t.data.[j] fromArray.[i] factor
       j <- next t j
 
+  let add' t factor (windowFunction : WindowFunction.T) (fromArray : Sample.T array) =
+    let mutable j = t.offset
+    for i = 0 to fromArray.Length - 1 do
+      t.data.[j] <- Sample.addMul t.data.[j] fromArray.[i] (factor * windowFunction.f.[i])
+      j <- next t j
+
+  let norm t size =
+    let mutable j = t.offset
+    let mutable c = 0.f
+    for i = 0 to size - 1 do
+      c <- max c (abs t.data.[j].x0)
+      c <- max c (abs t.data.[j].x1)
+      j <- next t j
+    c
+
   let copyTo t dst size =
     let mutable i = dst.offset
     let mutable j = t.offset

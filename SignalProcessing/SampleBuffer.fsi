@@ -18,6 +18,8 @@ module SampleBuffer =
 
   val window : T -> windowFunction : WindowFunction.T -> toArray : Sample.T array -> unit
   val add : T -> factor : float32 -> fromArray : Sample.T array -> unit
+  val add' : T -> factor : float32 -> windowFunction : WindowFunction.T -> fromArray : Sample.T array -> unit
+  val norm : T -> size : int -> float32
 
   val copyTo : T -> dst : T -> size : int -> unit
   val copyToArray : T -> dst : Sample.T array -> unit

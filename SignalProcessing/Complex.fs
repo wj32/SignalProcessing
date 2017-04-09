@@ -9,22 +9,22 @@ module Complex =
 
     static member inline (~~)(t) = {a = t.a; b = -t.b}
 
-    static member inline (*)(t1 : T, t2 : T) =
-      {a = t1.a * t2.a - t1.b * t2.b; b = t1.b * t2.a + t1.a * t2.b}
+    static member inline (*)(t0 : T, t1 : T) =
+      {a = t0.a * t1.a - t0.b * t1.b; b = t0.b * t1.a + t0.a * t1.b}
 
     static member inline (*)(c : float32, t) = {a = c * t.a; b = c * t.b}
 
     static member inline (*)(t, c : float32) = {a = t.a * c; b = t.b * c}
 
-    static member (/)(t1 : T, t2 : T) =
-      let r2 = t2.a * t2.a + t2.b * t2.b
-      {a = (t1.a * t2.a + t1.b * t2.b) / r2; b = (t1.b * t2.a - t1.a * t2.b) / r2}
+    static member (/)(t0 : T, t1 : T) =
+      let r2 = t1.a * t1.a + t1.b * t1.b
+      {a = (t0.a * t1.a + t0.b * t1.b) / r2; b = (t0.b * t1.a - t0.a * t1.b) / r2}
 
     static member inline (/)(t, c : float32) = {a = t.a / c; b = t.b / c}
 
-    static member inline (+)(t1, t2) = {a = t1.a + t2.a; b = t1.b + t2.b}
+    static member inline (+)(t0, t1) = {a = t0.a + t1.a; b = t0.b + t1.b}
 
-    static member inline (-)(t1, t2) = {a = t1.a - t2.a; b = t1.b - t2.b}
+    static member inline (-)(t0, t1) = {a = t0.a - t1.a; b = t0.b - t1.b}
 
     override t.ToString() = t.a.ToString() + "+" + t.b.ToString() + "i"
 
@@ -48,42 +48,42 @@ module Complex =
 
   let inline absSq t = t.a * t.a + t.b * t.b
 
-  let inline arg t = atan2 t.a t.b
+  let inline arg t = atan2 t.b t.a
 
-  let inline fromPolar (mag : float32) (arg : float32) = {a = mag * cos arg; b = mag * sin arg}
+  let inline ofPolar (mag : float32) (arg : float32) = {a = mag * cos arg; b = mag * sin arg}
 
   let inline neg t = {a = -t.a; b = -t.b}
 
   let inline conj t = {a = t.a; b = -t.b}
 
-  let inline mul t1 t2 = {a = t1.a * t2.a - t1.b * t2.b; b = t1.b * t2.a + t1.a * t2.b}
+  let inline mul t0 t1 = {a = t0.a * t1.a - t0.b * t1.b; b = t0.b * t1.a + t0.a * t1.b}
 
   let inline mul' t c = {a = t.a * c; b = t.b * c}
 
-  let div t1 t2 =
-      let r2 = t2.a * t2.a + t2.b * t2.b
-      {a = (t1.a * t2.a + t1.b * t2.b) / r2; b = (t1.b * t2.a - t1.a * t2.b) / r2}
+  let div t0 t1 =
+      let r2 = t1.a * t1.a + t1.b * t1.b
+      {a = (t0.a * t1.a + t0.b * t1.b) / r2; b = (t0.b * t1.a - t0.a * t1.b) / r2}
 
   let inline div' t c = {a = t.a / c; b = t.b / c}
 
-  let inline add t1 t2 = {a = t1.a + t2.a; b = t1.b + t2.b}
+  let inline add t0 t1 = {a = t0.a + t1.a; b = t0.b + t1.b}
 
-  let inline sub t1 t2 = {a = t1.a - t2.a; b = t1.b - t2.b}
+  let inline sub t0 t1 = {a = t0.a - t1.a; b = t0.b - t1.b}
 
-  let inline addMul t1 t2 t3 =
-    {a = t1.a + t2.a * t3.a - t2.b * t3.b; b = t1.b + t2.b * t3.a + t2.a * t3.b}
+  let inline addMul t0 t1 t3 =
+    {a = t0.a + t1.a * t3.a - t1.b * t3.b; b = t0.b + t1.b * t3.a + t1.a * t3.b}
 
-  let inline addMul' t1 t2 c = {a = t1.a + t2.a * c; b = t1.b + t2.b * c}
+  let inline addMul' t0 t1 c = {a = t0.a + t1.a * c; b = t0.b + t1.b * c}
 
   let inline inv t =
     let r = absSq t
     {a = t.a / r; b = -t.b / r}
 
-  let inline exp t = fromPolar (exp t.a) t.b
+  let inline exp t = ofPolar (exp t.a) t.b
 
-  let inline log t = fromPolar (0.5f * log (absSq t)) (arg t)
+  let inline log t = ofPolar (0.5f * log (absSq t)) (arg t)
 
-  let inline log' (c : float32) = fromPolar (0.5f * FSharp.Core.Operators.log (c * c)) (atan2 c 0.f)
+  let inline log' (c : float32) = ofPolar (0.5f * FSharp.Core.Operators.log (c * c)) (atan2 0.f c)
 
   let sqrt t =
     let mag = abs t
