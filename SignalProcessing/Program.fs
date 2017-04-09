@@ -106,9 +106,9 @@ module Main =
 
   let modTwoPi (x : float32) = float32 (Math.IEEERemainder(float x, 2. * Math.PI))
 
-  let testAnalyzeFrames (input : W.T) (parameters : P.T) (output : W.T) =
-    let frameSize = 8001
-    let hopSize = 2000
+  let testFreqTransformFrames (input : W.T) (parameters : P.T) (output : W.T) =
+    let frameSize = 6001
+    let hopSize = 1500
     let fftSize = 16384 * 2
     let binSize = float32 parameters.sampleRate / float32 fftSize
     let hopTime = float32 hopSize / float32 parameters.sampleRate
@@ -184,9 +184,9 @@ module Main =
           binFreq.[j] <- (float32 j + phaseDiffDevFrac) * binSize
           binMag.[j] <- Complex.abs fftOutput.[j]
 
-        // Shift
+        // Shift (using phase vocoder)
         let halfTone = 2.f ** (1.f / 12.f)
-        let shiftFactor = halfTone ** (6.f)
+        let shiftFactor = halfTone ** (12.f)
         Array.fill binMag' 0 (fftSize / 2 + 1) 0.f
         Array.fill binFreq' 0 (fftSize / 2 + 1) 0.f
         for j = 0 to fftSize / 2 do
@@ -194,11 +194,6 @@ module Main =
           if j' <= fftSize / 2 then
             binMag'.[j'] <- binMag'.[j'] + binMag.[j]
             binFreq'.[j'] <- binFreq.[j] * shiftFactor
-        //for j = 0 to fftSize / 2 do
-        //  let j' = int (float32 j / shiftFactor)
-        //  if j' <= fftSize / 2 then
-        //    binMag'.[j] <- binMag.[j']
-        //    binFreq'.[j] <- binFreq.[j'] * shiftFactor
 
         // Phase vocoder
         for j = 0 to fftSize / 2 do
@@ -208,6 +203,17 @@ module Main =
           let phase = sumPhase.[channel].[j] + phaseDiff
           sumPhase.[channel].[j] <- phase
           fftOutput.[j] <- Complex.ofPolar binMag'.[j] phase
+
+        // Shift (naive)
+        //if shiftFactor < 1.f then
+        //  for j = 0 to fftSize / 2 do
+        //    let j' = int (float32 j / shiftFactor)
+        //    if j' <= fftSize / 2 then
+        //      fftOutput.[j] <- fftOutput.[j']
+        //else
+        //  for j = fftSize / 2 downto 0 do
+        //    let j' = int (float32 j / shiftFactor)
+        //    fftOutput.[j] <- fftOutput.[j']
 
         for j = fftSize / 2 + 1 to fftSize - 1 do
           fftOutput.[j] <- Complex.conj fftOutput.[fftSize - j]
@@ -227,7 +233,7 @@ module Main =
       let parameters = W.parameters input
       let output = W.createFile "D:\\Box\\test.wav" parameters
 
-      testAnalyzeFrames input parameters output
+      testFreqTransformFrames input parameters output
 
       (output :> IDisposable).Dispose()
 
