@@ -185,15 +185,38 @@ module Main =
           binMag.[j] <- Complex.abs fftOutput.[j]
 
         // Shift (using phase vocoder)
-        let halfTone = 2.f ** (1.f / 12.f)
-        let shiftFactor = halfTone ** (12.f)
-        Array.fill binMag' 0 (fftSize / 2 + 1) 0.f
-        Array.fill binFreq' 0 (fftSize / 2 + 1) 0.f
-        for j = 0 to fftSize / 2 do
-          let j' = int (float32 j * shiftFactor)
-          if j' <= fftSize / 2 then
-            binMag'.[j'] <- binMag'.[j'] + binMag.[j]
-            binFreq'.[j'] <- binFreq.[j] * shiftFactor
+        let shift () =
+          let halfTone = 2.f ** (1.f / 12.f)
+          let shiftFactor = halfTone ** (12.f)
+          Array.fill binMag' 0 (fftSize / 2 + 1) 0.f
+          Array.fill binFreq' 0 (fftSize / 2 + 1) 0.f
+          for j = 0 to fftSize / 2 do
+            let j' = int (float32 j * shiftFactor)
+            if j' <= fftSize / 2 then
+              binMag'.[j'] <- binMag'.[j'] + binMag.[j]
+              binFreq'.[j'] <- binFreq.[j] * shiftFactor
+
+        // Reduce to top n peaks
+        let top n =
+          Array.fill binMag' 0 (fftSize / 2 + 1) 0.f
+          Array.fill binFreq' 0 (fftSize / 2 + 1) 0.f
+          let mutable c0 = 0.f
+          let mutable c1 = 0.f
+          let heap = Heap.createWithCapacity n
+          for j = 0 to fftSize / 2 do
+            let c = binMag.[j]
+            if (c0 < c1) && (c1 > c) then
+              if Heap.count heap < n then
+                Heap.add heap (-c1, j - 1)
+              else
+                Heap.replace heap (-c1, j - 1) |> ignore
+            c0 <- c1
+            c1 <- c
+          for (_, index) in Heap.toArray heap do
+            binMag'.[index] <- binMag.[index]
+            binFreq'.[index] <- binFreq.[index]
+
+        top 32
 
         // Phase vocoder
         for j = 0 to fftSize / 2 do
@@ -229,7 +252,7 @@ module Main =
 
   [<EntryPoint>]
   let main argv =
-      use input = W.openFile AccessType.ReadOnly "D:\\Box\\rag_doll.wav"
+      use input = W.openFile AccessType.ReadOnly "D:\\Box\\dancing_queen.wav"
       let parameters = W.parameters input
       let output = W.createFile "D:\\Box\\test.wav" parameters
 

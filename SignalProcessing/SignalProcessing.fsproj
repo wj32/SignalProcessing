@@ -54,9 +54,11 @@
   </Choose>
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
-    <Compile Include="AccessType.fs" />
+    <Compile Include="Heap.fsi" />
+    <Compile Include="Heap.fs" />
     <Compile Include="Complex.fs" />
     <Compile Include="Sample.fs" />
+    <Compile Include="AccessType.fs" />
     <Compile Include="SampleAccessor.fs" />
     <Compile Include="FFT.fsi" />
     <Compile Include="FFT.fs" />
