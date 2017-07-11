@@ -17,6 +17,27 @@ module WindowFunction =
         loop (acc + t.f.[i]) (i + h)
     1.f / loop 0.f 0
 
+  let roundUpPowerOfTwo n =
+    let k = n - 1
+    let k = k ||| (k >>> 1)
+    let k = k ||| (k >>> 2)
+    let k = k ||| (k >>> 4)
+    let k = k ||| (k >>> 8)
+    let k = k ||| (k >>> 16)
+    let n' = k + 1
+    n'
+
+  let maxSpectrum fftSize wf =
+    if fftSize < wf.f.Length then
+      invalidArg "fftSize" "fftSize cannot be less than the window width."
+    let fft = FFT.create fftSize FFT.Normalization.Asymmetric
+    let output = Array.zeroCreate fftSize
+    FFT.compute
+      fft
+      (Array.append wf.f (Array.zeroCreate (fftSize - wf.f.Length)) |> Array.map Complex.createRe)
+      output
+    Complex.abs output.[0] / float32 fftSize
+
   let rectangular n =
     { width = n;
       f = Array.init n (fun _ -> 1.f); }

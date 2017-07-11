@@ -15,5 +15,7 @@ module Heap =
 
   val count : 'a T -> int
   val isEmpty : 'a T -> bool
+  val top : 'a T -> 'a
+  val tryTop : 'a T -> 'a option
 
   val toArray : 'a T -> 'a array

@@ -84,4 +84,14 @@ module Heap =
 
   let isEmpty t = t.count = 0
 
+  let inline topGeneric t none some =
+    if t.count = 0 then
+      none ()
+    else
+      some t.data.[0]
+
+  let top t = topGeneric t (fun () -> invalidOp HeapEmpty) id
+
+  let tryTop t = topGeneric t (fun () -> None) Some
+
   let toArray t = Array.take t.count t.data

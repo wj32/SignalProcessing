@@ -107,60 +107,33 @@ module Main =
   let modTwoPi (x : float32) = float32 (Math.IEEERemainder(float x, 2. * Math.PI))
 
   let testFreqTransformFrames (input : W.T) (parameters : P.T) (output : W.T) =
-    let frameSize = 6001
-    let hopSize = 1500
+    let frameSize = 6000 / 2 + 1
+    let hopSize = 1500 / 2
     let fftSize = 16384 * 2
     let binSize = float32 parameters.sampleRate / float32 fftSize
     let hopTime = float32 hopSize / float32 parameters.sampleRate
     let frames = (parameters.samples + hopSize - 1) / hopSize
-    let fft = FFT.create fftSize FFT.Normalization.Symmetric
+    let fft = FFT.create fftSize FFT.Normalization.Asymmetric
     let inputBuffer = SampleBuffer.create (W.accessor input) AccessType.ReadOnly 50000
     let outputBuffer = SampleBuffer.create (W.accessor output) AccessType.WriteOnly 50000
     let frame = Array.zeroCreate frameSize
     let fftInput = Array.zeroCreate fftSize
     let fftOutput = Array.zeroCreate fftSize
     let wf = WindowFunction.hann frameSize
+    let invMaxSpectrumOfWf = 1.f / WindowFunction.maxSpectrum fftSize wf
     let c = WindowFunction.normalizationFactor wf hopSize
 
     // Phase vocoder
-    let prevPhase = Array.init 2 (fun _ -> Array.zeroCreate (fftSize / 2 + 1))
-    let sumPhase = Array.init 2 (fun _ -> Array.zeroCreate (fftSize / 2 + 1))
-    let binMag = Array.zeroCreate (fftSize / 2 + 1)
-    let binFreq = Array.zeroCreate (fftSize / 2 + 1)
-    let binMag' = Array.zeroCreate (fftSize / 2 + 1)
-    let binFreq' = Array.zeroCreate (fftSize / 2 + 1)
-    let twoPi = 2.f * float32 Math.PI
-    let phaseHop = twoPi * binSize * hopTime
-    let phaseDiffExpected =
-      Array.init (fftSize / 2 + 1) (fun i -> modTwoPi (float32 i * phaseHop))
-
-    let passCutoffHz = 440.f
-    let passCutoffBin = passCutoffHz / binSize
-    let rampWidthHz = 320.f
-    let rampWidthBins = rampWidthHz / binSize
-    let rampLeftBin = passCutoffBin - rampWidthBins / 2.f
-    let rampRightBin = passCutoffBin + rampWidthBins / 2.f
-
-    let lowPass i =
-      let i = float32 i
-      if i < rampLeftBin then
-        1.f
-      else if i > rampRightBin then
-        0.f
-      else
-        (rampRightBin - i) / rampWidthBins
-
-    let highPass i = 1.f - lowPass i
-
-    let mulFilter =
-      let f = lowPass
-      let a = Array.zeroCreate fftSize
-      // Enforce symmetry
-      for i = 0 to fftSize / 2 do
-        a.[i] <- f i
-      for i = fftSize / 2 + 1 to fftSize - 1 do
-        a.[i] <- a.[fftSize - i]
-      a
+    //let prevPhase = Array.init 2 (fun _ -> Array.zeroCreate (fftSize / 2 + 1))
+    //let sumPhase = Array.init 2 (fun _ -> Array.zeroCreate (fftSize / 2 + 1))
+    //let binMag = Array.zeroCreate (fftSize / 2 + 1)
+    //let binFreq = Array.zeroCreate (fftSize / 2 + 1)
+    //let binMag' = Array.zeroCreate (fftSize / 2 + 1)
+    //let binFreq' = Array.zeroCreate (fftSize / 2 + 1)
+    //let twoPi = 2.f * float32 Math.PI
+    //let phaseHop = twoPi * binSize * hopTime
+    //let phaseDiffExpected =
+    //  Array.init (fftSize / 2 + 1) (fun i -> modTwoPi (float32 i * phaseHop))
 
     let mutable norm = 0.f
 
@@ -174,69 +147,46 @@ module Main =
         //  fftOutput.[j] <- Complex.mul' fftOutput.[j] mulFilter.[j]
 
         // Phase vocoder
-        for j = 0 to fftSize / 2 do
-          let phase = Complex.arg fftOutput.[j]
-          let phaseDiff = phase - prevPhase.[channel].[j]
-          prevPhase.[channel].[j] <- phase
-          let phaseDiffDev = phaseDiff - phaseDiffExpected.[j]
-          let phaseDiffDev = modTwoPi phaseDiffDev
-          let phaseDiffDevFrac = phaseDiffDev / phaseHop
-          binFreq.[j] <- (float32 j + phaseDiffDevFrac) * binSize
-          binMag.[j] <- Complex.abs fftOutput.[j]
-
-        // Shift (using phase vocoder)
-        let shift () =
-          let halfTone = 2.f ** (1.f / 12.f)
-          let shiftFactor = halfTone ** (12.f)
-          Array.fill binMag' 0 (fftSize / 2 + 1) 0.f
-          Array.fill binFreq' 0 (fftSize / 2 + 1) 0.f
-          for j = 0 to fftSize / 2 do
-            let j' = int (float32 j * shiftFactor)
-            if j' <= fftSize / 2 then
-              binMag'.[j'] <- binMag'.[j'] + binMag.[j]
-              binFreq'.[j'] <- binFreq.[j] * shiftFactor
+        //for j = 0 to fftSize / 2 do
+        //  let phase = Complex.arg fftOutput.[j]
+        //  let phaseDiff = phase - prevPhase.[channel].[j]
+        //  prevPhase.[channel].[j] <- phase
+        //  let phaseDiffDev = phaseDiff - phaseDiffExpected.[j]
+        //  let phaseDiffDev = modTwoPi phaseDiffDev
+        //  let phaseDiffDevFrac = phaseDiffDev / phaseHop
+        //  binFreq.[j] <- (float32 j + phaseDiffDevFrac) * binSize
+        //  binMag.[j] <- Complex.abs fftOutput.[j]
 
         // Reduce to top n peaks
         let top n =
-          Array.fill binMag' 0 (fftSize / 2 + 1) 0.f
-          Array.fill binFreq' 0 (fftSize / 2 + 1) 0.f
           let mutable c0 = 0.f
           let mutable c1 = 0.f
           let heap = Heap.createWithCapacity n
           for j = 0 to fftSize / 2 do
-            let c = binMag.[j]
+            let c = Complex.abs fftOutput.[j]
             if (c0 < c1) && (c1 > c) then
               if Heap.count heap < n then
-                Heap.add heap (-c1, j - 1)
+                Heap.add heap (-c1, j - 1, fftOutput.[j])
               else
-                Heap.replace heap (-c1, j - 1) |> ignore
+                let (c', _, _) = Heap.top heap
+                if c1 > -c' then
+                  Heap.replace heap (-c1, j - 1, fftOutput.[j]) |> ignore
             c0 <- c1
             c1 <- c
-          for (_, index) in Heap.toArray heap do
-            binMag'.[index] <- binMag.[index]
-            binFreq'.[index] <- binFreq.[index]
+          Array.fill fftOutput 0 fftOutput.Length Complex.zero
+          for (_, index, original) in Heap.toArray heap do
+            fftOutput.[index] <- Complex.mul' original invMaxSpectrumOfWf
 
-        top 32
+        top 100
 
         // Phase vocoder
-        for j = 0 to fftSize / 2 do
-          let freqDevFrac = binFreq'.[j] / binSize - float32 j
-          let phaseDiffDev = freqDevFrac * phaseHop
-          let phaseDiff = phaseDiffExpected.[j] + phaseDiffDev
-          let phase = sumPhase.[channel].[j] + phaseDiff
-          sumPhase.[channel].[j] <- phase
-          fftOutput.[j] <- Complex.ofPolar binMag'.[j] phase
-
-        // Shift (naive)
-        //if shiftFactor < 1.f then
-        //  for j = 0 to fftSize / 2 do
-        //    let j' = int (float32 j / shiftFactor)
-        //    if j' <= fftSize / 2 then
-        //      fftOutput.[j] <- fftOutput.[j']
-        //else
-        //  for j = fftSize / 2 downto 0 do
-        //    let j' = int (float32 j / shiftFactor)
-        //    fftOutput.[j] <- fftOutput.[j']
+        //for j = 0 to fftSize / 2 do
+        //  let freqDevFrac = binFreq'.[j] / binSize - float32 j
+        //  let phaseDiffDev = freqDevFrac * phaseHop
+        //  let phaseDiff = phaseDiffExpected.[j] + phaseDiffDev
+        //  let phase = sumPhase.[channel].[j] + phaseDiff
+        //  sumPhase.[channel].[j] <- phase
+        //  fftOutput.[j] <- Complex.ofPolar binMag'.[j] phase
 
         for j = fftSize / 2 + 1 to fftSize - 1 do
           fftOutput.[j] <- Complex.conj fftOutput.[fftSize - j]
@@ -252,7 +202,7 @@ module Main =
 
   [<EntryPoint>]
   let main argv =
-      use input = W.openFile AccessType.ReadOnly "D:\\Box\\dancing_queen.wav"
+      use input = W.openFile AccessType.ReadOnly "D:\\Box\\waltz.wav"
       let parameters = W.parameters input
       let output = W.createFile "D:\\Box\\test.wav" parameters
 
