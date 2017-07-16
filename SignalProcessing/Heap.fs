@@ -30,13 +30,14 @@ module Heap =
   let rec siftDown t i =
     let j = i * 2 + 1
     if j < t.count then
-      if t.data.[i] < t.data.[j] then
-        swap &t.data.[i] &t.data.[j]
-        siftDown t j
-      else if j + 1 < t.count then
-        if t.data.[i] < t.data.[j + 1] then
-          swap &t.data.[i] &t.data.[j + 1]
-          siftDown t (j + 1)
+      let j' =
+        if j + 1 < t.count && t.data.[j] < t.data.[j + 1] then
+          j + 1
+        else
+          j
+      if t.data.[i] < t.data.[j'] then
+        swap &t.data.[i] &t.data.[j']
+        siftDown t j'
 
   let rec siftUp t j =
     if j > 0 then
