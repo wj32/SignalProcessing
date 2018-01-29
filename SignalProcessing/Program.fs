@@ -17,6 +17,129 @@ module Main =
 
   let modTwoPi (x : float32) = float32 (Math.IEEERemainder(float x, 2. * Math.PI))
 
+  let testPhaseVocoder (input : W.T) (parameters : P.T) (output : W.T) =
+    let frameSize = 6001
+    let hopSize = 1500
+    let fftSize = 16384 * 2
+    let binSize = float32 parameters.sampleRate / float32 fftSize
+    let hopTime = float32 hopSize / float32 parameters.sampleRate
+    let frames = (parameters.samples + hopSize - 1) / hopSize
+    let fft = FFT.create fftSize FFT.Normalization.Symmetric
+    let inputBuffer = SampleBuffer.create (W.accessor input) AccessType.ReadOnly 50000
+    let outputBuffer = SampleBuffer.create (W.accessor output) AccessType.WriteOnly 50000
+    let frame = Array.zeroCreate frameSize
+    let fftInput = Array.zeroCreate fftSize
+    let fftOutput = Array.zeroCreate fftSize
+    let wf = WindowFunction.hann frameSize
+    let c = WindowFunction.normalizationFactor wf hopSize
+
+    // Phase vocoder
+    let prevPhase = Array.init 2 (fun _ -> Array.zeroCreate (fftSize / 2 + 1))
+    let sumPhase = Array.init 2 (fun _ -> Array.zeroCreate (fftSize / 2 + 1))
+    let binMag = Array.zeroCreate (fftSize / 2 + 1)
+    let binFreq = Array.zeroCreate (fftSize / 2 + 1)
+    let binMag' = Array.zeroCreate (fftSize / 2 + 1)
+    let binFreq' = Array.zeroCreate (fftSize / 2 + 1)
+    let twoPi = 2.f * float32 Math.PI
+    let phaseHop = twoPi * binSize * hopTime
+    let phaseDiffExpected =
+      Array.init (fftSize / 2 + 1) (fun i -> modTwoPi (float32 i * phaseHop))
+
+    // Major <-> minor
+    let shiftTable = Array.create fftSize 1.f
+    let makeShiftTable tonicHz =
+      let semitone = 2.f ** (1.f / 12.f)
+      let quartertone = sqrt semitone
+      let processTonic freq =
+        let processShift freq step =
+          let oldBinLow = int (freq / quartertone / binSize)
+          let oldBinHigh = int (freq * quartertone / binSize)
+          if oldBinHigh <= fftSize / 2 then
+            for i = oldBinLow to oldBinHigh do
+              shiftTable.[i] <- step
+        // Major third to minor third, major sixth to minor sixth
+        processShift (freq * (semitone ** 4.f)) (semitone ** -1.f)
+        processShift (freq * (semitone ** 9.f)) (semitone ** -1.f)
+        // Minor third to major third, minor sixth to major sixth
+        //processShift (freq * (semitone ** 3.f)) (semitone ** 1.f)
+        //processShift (freq * (semitone ** 8.f)) (semitone ** 1.f)
+      let rec processUpDown mult freq =
+        if freq > 20.f && freq < 20000.f then
+          processTonic freq
+          processUpDown mult (freq * mult)
+      processUpDown 0.5f tonicHz
+      processUpDown 2.f tonicHz
+    makeShiftTable 501.f
+
+    let mutable norm = 0.f
+
+    for frameIndex = 0 to frames - 1 do
+      SampleBuffer.window inputBuffer wf frame
+      for channel = 0 to 1 do
+        FFT.sampleArrayToCentered channel frame fftInput
+        FFT.compute fft fftInput fftOutput
+
+        // Phase vocoder
+        for j = 0 to fftSize / 2 do
+          let phase = Complex.arg fftOutput.[j]
+          let phaseDiff = phase - prevPhase.[channel].[j]
+          prevPhase.[channel].[j] <- phase
+          let phaseDiffDev = phaseDiff - phaseDiffExpected.[j]
+          let phaseDiffDev = modTwoPi phaseDiffDev
+          let phaseDiffDevFrac = phaseDiffDev / phaseHop
+          binFreq.[j] <- (float32 j + phaseDiffDevFrac) * binSize
+          binMag.[j] <- Complex.abs fftOutput.[j]
+
+        // Shift (using phase vocoder)
+        let halfTone = 2.f ** (1.f / 12.f)
+        Array.fill binMag' 0 (fftSize / 2 + 1) 0.f
+        Array.fill binFreq' 0 (fftSize / 2 + 1) 0.f
+        for j = 0 to fftSize / 2 do
+          let shiftFactor = shiftTable.[j]
+          let j' = int (float32 j * shiftFactor)
+          if j' <= fftSize / 2 then
+            binMag'.[j'] <- binMag'.[j'] + binMag.[j]
+            binFreq'.[j'] <- binFreq.[j] * shiftFactor
+
+        // Phase vocoder
+        for j = 0 to fftSize / 2 do
+          let freqDevFrac = binFreq'.[j] / binSize - float32 j
+          let phaseDiffDev = freqDevFrac * phaseHop
+          let phaseDiff = phaseDiffExpected.[j] + phaseDiffDev
+          let phase = sumPhase.[channel].[j] + phaseDiff
+          sumPhase.[channel].[j] <- phase
+          fftOutput.[j] <- Complex.ofPolar binMag'.[j] phase
+
+        // Shift (naive)
+        //if shiftFactor < 1.f then
+        //  for j = 0 to fftSize / 2 do
+        //    let j' = int (float32 j / shiftFactor)
+        //    if j' <= fftSize / 2 then
+        //      fftOutput.[j] <- fftOutput.[j']
+        //else
+        //  for j = fftSize / 2 downto 0 do
+        //    let j' = int (float32 j / shiftFactor)
+        //    fftOutput.[j] <- fftOutput.[j']
+
+        for j = fftSize / 2 + 1 to fftSize - 1 do
+          fftOutput.[j] <- Complex.conj fftOutput.[fftSize - j]
+
+        FFT.computeInverse fft fftOutput fftInput
+        FFT.sampleArrayFromCentered channel frame fftInput
+      SampleBuffer.add' outputBuffer c wf frame
+      norm <- max norm (SampleBuffer.norm outputBuffer frameSize)
+      SampleBuffer.moveBy outputBuffer hopSize
+      SampleBuffer.moveBy inputBuffer hopSize
+      if frameIndex % 100 = 0 then
+        printf
+          "\rProcessed frame %d / %d (%.1f%%)"
+          (frameIndex + 1)
+          frames
+          (float (frameIndex + 1) / float frames * 100.)
+    SampleBuffer.flush outputBuffer
+    printfn ""
+    printfn "Norm: %f" norm
+
   let testSinusoidalModel (input : W.T) (parameters : P.T) (output : W.T) =
     let frameSize = 6000 / 2 + 1
     let hopSize = 1500 / 2
@@ -36,7 +159,7 @@ module Main =
 
     let mutable norm = 0.f
 
-    let peakCount = 100
+    let peakCount = 200
     let heap = Heap.createWithCapacity peakCount
 
     for frameIndex = 0 to frames - 1 do
@@ -62,7 +185,9 @@ module Main =
                   Heap.replace heap (-c1, j - 1, fftOutput.[j]) |> ignore
             c0 <- c1
             c1 <- c
+
           Array.fill fftOutput 0 fftOutput.Length Complex.zero
+
           for (_, index, original) in Heap.toArray heap do
             fftOutput.[index] <- Complex.mul' original invMaxSpectrumOfWf
 
@@ -431,11 +556,11 @@ module Main =
 
   [<EntryPoint>]
   let main argv =
-      use input = W.openFile AccessType.ReadOnly "D:\\Box\\dancing_queen.wav"
+      use input = W.openFile AccessType.ReadOnly "D:\\Box\\yellow.wav"
       let parameters = W.parameters input
       let output = W.createFile "D:\\Box\\test.wav" parameters
 
-      testHarmonicModel input parameters output
+      testPhaseVocoder input parameters output
 
       (output :> IDisposable).Dispose()
 
