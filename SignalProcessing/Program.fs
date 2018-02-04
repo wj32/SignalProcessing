@@ -46,30 +46,41 @@ module Main =
       Array.init (fftSize / 2 + 1) (fun i -> modTwoPi (float32 i * phaseHop))
 
     // Major <-> minor
+
     let shiftTable = Array.create fftSize 1.f
     let makeShiftTable tonicHz =
       let semitone = 2.f ** (1.f / 12.f)
       let quartertone = sqrt semitone
+      let width = quartertone
       let processTonic freq =
         let processShift freq step =
-          let oldBinLow = int (freq / quartertone / binSize)
-          let oldBinHigh = int (freq * quartertone / binSize)
+          let oldBinLow = int (freq / width / binSize)
+          let oldBinHigh = int (freq * width / binSize)
           if oldBinHigh <= fftSize / 2 then
             for i = oldBinLow to oldBinHigh do
-              shiftTable.[i] <- step
+              shiftTable.[i] <- shiftTable.[i] * step
+
         // Major third to minor third, major sixth to minor sixth
-        processShift (freq * (semitone ** 4.f)) (semitone ** -1.f)
-        processShift (freq * (semitone ** 9.f)) (semitone ** -1.f)
+        // Major seventh (3rd partial of major third) to minor seventh
+        //processShift (freq * (semitone ** 4.f)) (semitone ** -1.f)
+        //processShift (freq * (semitone ** 9.f)) (semitone ** -1.f)
+        //processShift (freq * (semitone ** 11.f)) (semitone ** -1.f)
+
         // Minor third to major third, minor sixth to major sixth
-        //processShift (freq * (semitone ** 3.f)) (semitone ** 1.f)
-        //processShift (freq * (semitone ** 8.f)) (semitone ** 1.f)
+        // Minor seventh (3rd partial of minor third) to major seventh
+        processShift (freq * (semitone ** 3.f)) (semitone ** 1.f)
+        processShift (freq * (semitone ** 8.f)) (semitone ** 1.f)
+        processShift (freq * (semitone ** 10.f)) (semitone ** 1.f)
+
       let rec processUpDown mult freq =
         if freq > 20.f && freq < 20000.f then
           processTonic freq
           processUpDown mult (freq * mult)
+
       processUpDown 0.5f tonicHz
       processUpDown 2.f tonicHz
-    makeShiftTable 501.f
+
+    makeShiftTable 438.f
 
     let mutable norm = 0.f
 
@@ -556,7 +567,7 @@ module Main =
 
   [<EntryPoint>]
   let main argv =
-      use input = W.openFile AccessType.ReadOnly "D:\\Box\\yellow.wav"
+      use input = W.openFile AccessType.ReadOnly "D:\\Box\\money.wav"
       let parameters = W.parameters input
       let output = W.createFile "D:\\Box\\test.wav" parameters
 
